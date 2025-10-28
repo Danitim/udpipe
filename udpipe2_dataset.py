@@ -60,6 +60,8 @@ class UDPipe2Dataset:
         for f in range(self.FACTORS):
             self._factors.append(self._Factor(f == self.FORMS, f == self.FORMS, train._factors[f] if train else None))
         self._extras = []
+        
+        self._morph_active = []
 
         form_dict = {}
 
@@ -109,26 +111,45 @@ class UDPipe2Dataset:
                         continue
 
                     columns = line.split("\t")[1:]
-                    for f in range(self.FACTORS):
-                        factor = self._factors[f]
-                        if not in_sentence:
-                            if len(factor.word_ids): factor.word_ids[-1] = np.array(factor.word_ids[-1], np.int32)
+
+                    if not in_sentence:
+                        for f in range(self.FACTORS):
+                            factor = self._factors[f]
+
+                            if len(factor.word_ids):
+                                factor.word_ids[-1] = np.array(factor.word_ids[-1], np.int32)
+
                             factor.word_ids.append([])
                             factor.strings.append([])
-                            if factor.characters: factor.charseq_ids.append([])
+                            if factor.characters:
+                                factor.charseq_ids.append([])
+
                             if factor.with_root:
                                 factor.word_ids[-1].append(factor.ROOT)
                                 factor.strings[-1].append(factor.words[factor.ROOT])
-                                if factor.characters: factor.charseq_ids[-1].append(factor.ROOT)
+                                if factor.characters:
+                                    factor.charseq_ids[-1].append(factor.ROOT)
+
+                        self._morph_active.append([])
+                        self._morph_active[-1].append(0)
+
+                        if override_variant is not None:
+                            variant = override_variant
+                        if (variant not in self._variant_map) and (not train):
+                            self._variant_map[variant] = len(self._variant_map)
+                        self._variants.append(self._variant_map.get(variant, 0))
+
+                        in_sentence = True
+
+                    for f in range(self.FACTORS):
+                        factor = self._factors[f]
 
                         word = columns[f]
                         factor.strings[-1].append(word)
 
-                        # Preprocess word
                         if f == self.LEMMAS and self._lr_allow_copy is not None:
                             word = self._gen_lemma_rule(columns[self.FORMS], columns[self.LEMMAS], self._lr_allow_copy)
 
-                        # Character-level information
                         if factor.characters:
                             if word not in factor.charseqs_map:
                                 factor.charseqs_map[word] = len(factor.charseqs)
@@ -143,7 +164,6 @@ class UDPipe2Dataset:
                                     factor.charseqs[-1].append(factor.alphabet_map[c])
                             factor.charseq_ids[-1].append(factor.charseqs_map[word])
 
-                        # Word-level information
                         if f == self.HEAD:
                             factor.word_ids[-1].append(int(word) if word != "_" else -1)
                         elif f == self.FORMS and not train:
@@ -161,12 +181,10 @@ class UDPipe2Dataset:
                                     factor.words_map[word] = len(factor.words)
                                     factor.words.append(word)
                             factor.word_ids[-1].append(factor.words_map[word])
-                    if not in_sentence:
-                        if override_variant is not None: variant = override_variant
-                        if (variant not in self._variant_map) and (not train):
-                            self._variant_map[variant] = len(self._variant_map)
-                        self._variants.append(self._variant_map.get(variant, 0))
-                    in_sentence = True
+
+                    form_val = columns[self.FORMS]
+                    morph_ok = 0 if (not form_val or form_val == "_") else 1
+                    self._morph_active[-1].append(morph_ok)
                 else:
                     in_sentence = False
                     if max_sentences is not None and len(self._factors[self.FORMS].word_ids) >= max_sentences:
@@ -202,6 +220,15 @@ class UDPipe2Dataset:
         self._sentence_lens = np.zeros([sentences], np.int32)
         for i in range(len(self._factors[self.FORMS].word_ids)):
             self._sentence_lens[i] = len(self._factors[self.FORMS].word_ids[i]) - self._factors[self.FORMS].with_root
+
+        for i in range(len(self._morph_active)):
+            self._morph_active[i] = np.array(self._morph_active[i], np.float32)
+            assert len(self._morph_active[i]) == len(self._factors[self.FORMS].word_ids[i]), \
+                "morph_active len {} != word_ids len {} for sent {}".format(
+                    len(self._morph_active[i]),
+                    len(self._factors[self.FORMS].word_ids[i]),
+                    i
+                )
 
         self._shuffle_batches = shuffle_batches
         self._permutation = np.random.permutation(len(self._sentence_lens)) if self._shuffle_batches else np.arange(len(self._sentence_lens))
@@ -257,6 +284,13 @@ class UDPipe2Dataset:
         # General data
         batch_sentence_lens = self._sentence_lens[batch_perm]
         max_sentence_len = np.max(batch_sentence_lens)
+        
+        batch_morph_mask = np.zeros([batch_size, max_sentence_len], np.float32)
+        for i in range(batch_size):
+            sent_idx = batch_perm[i]
+            sent_len = batch_sentence_lens[i]
+            active_flags = self._morph_active[sent_idx][1:1+sent_len]
+            batch_morph_mask[i, :sent_len] = active_flags
 
         # Word-level data
         batch_word_ids = []
@@ -303,7 +337,7 @@ class UDPipe2Dataset:
             for i in range(len(charseqs)):
                 batch_charseqs[-1][i, 0:len(charseqs[i])] = charseqs[i]
 
-        return self._sentence_lens[batch_perm], batch_word_ids, batch_charseq_ids, batch_charseqs, batch_charseq_lens
+        return self._sentence_lens[batch_perm], batch_word_ids, batch_charseq_ids, batch_charseqs, batch_charseq_lens, batch_morph_mask
 
     def write_sentence(self, output, index, overrides):
         for i in range(self._sentence_lens[index] + 1):

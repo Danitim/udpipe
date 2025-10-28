@@ -61,6 +61,7 @@ class UDPipe2:
             # Inputs
             self.sentence_lens = tf.placeholder(tf.int32, [None])
             self.word_ids = tf.placeholder(tf.int32, [None, None])
+            self.morph_mask = tf.placeholder(tf.float32, [None, None])
             self.charseqs = tf.placeholder(tf.int32, [None, None])
             self.charseq_lens = tf.placeholder(tf.int32, [None])
             self.charseq_ids = tf.placeholder(tf.int32, [None, None])
@@ -132,6 +133,8 @@ class UDPipe2:
             loss = 0
             weights = tf.sequence_mask(self.sentence_lens, dtype=tf.float32)
             weights_sum = tf.reduce_sum(weights)
+            morph_weights = weights * self.morph_mask
+            morph_weights_sum = tf.reduce_sum(morph_weights)
             self.predictions, self.predictions_logits = {}, {}
             tag_hidden_layer = hidden_layer[:, 1:]
             for i in range(args.rnn_layers_tagger):
@@ -153,9 +156,9 @@ class UDPipe2:
 
                 if args.label_smoothing:
                     gold_labels = tf.one_hot(self.tags[tag], num_tags[tag]) * (1 - args.label_smoothing) + args.label_smoothing / num_tags[tag]
-                    loss += tf.losses.softmax_cross_entropy(gold_labels, output_layer, weights=weights)
+                    loss += tf.losses.softmax_cross_entropy(gold_labels, output_layer, weights=morph_weights)
                 else:
-                    loss += tf.losses.sparse_softmax_cross_entropy(self.tags[tag], output_layer, weights=weights)
+                    loss += tf.losses.sparse_softmax_cross_entropy(self.tags[tag], output_layer, weights=morph_weights)
 
             # Parsing
             if args.parse:
@@ -257,8 +260,7 @@ class UDPipe2:
                 for tag in args.tags:
                     self.training_summaries.append(tf.contrib.summary.scalar(
                         "train/{}".format(tag),
-                        tf.reduce_sum(tf.cast(tf.equal(self.tags[tag], self.predictions[tag]), tf.float32) * weights) /
-                        weights_sum))
+                        tf.reduce_sum(tf.cast(tf.equal(self.tags[tag], self.predictions[tag]), tf.float32) * morph_weights) / morph_weights_sum))
                 if args.parse:
                     heads_acc = tf.reduce_sum(tf.cast(tf.equal(self.heads, tf.argmax(heads, axis=-1, output_type=tf.int32)),
                                                       tf.float32) * weights) / weights_sum
@@ -319,7 +321,7 @@ class UDPipe2:
         batches, at_least_one_epoch = 0, False
         while batches < args.min_epoch_batches:
             while not train.epoch_finished():
-                sentence_lens, word_ids, charseq_ids, charseqs, charseq_lens = train.next_batch(args.batch_size)
+                sentence_lens, word_ids, charseq_ids, charseqs, charseq_lens, morph_mask = train.next_batch(args.batch_size)
                 if args.word_dropout:
                     mask = np.random.binomial(n=1, p=args.word_dropout, size=word_ids[train.FORMS].shape)
                     word_ids[train.FORMS] = (1 - mask) * word_ids[train.FORMS] + mask * train.factors[train.FORMS].words_map["<unk>"]
@@ -329,7 +331,8 @@ class UDPipe2:
 
                 feeds = {self.is_training: True, self.learning_rate: learning_rate, self.sentence_lens: sentence_lens,
                          self.charseqs: charseqs[train.FORMS], self.charseq_lens: charseq_lens[train.FORMS],
-                         self.word_ids: word_ids[train.FORMS], self.charseq_ids: charseq_ids[train.FORMS]}
+                         self.word_ids: word_ids[train.FORMS], self.charseq_ids: charseq_ids[train.FORMS],
+                         self.morph_mask: morph_mask,}
                 if train.variants > 1:
                     feeds[self.variants] = word_ids[train.VARIANT]
                 if train.embeddings_size:
@@ -351,11 +354,12 @@ class UDPipe2:
         conllu, sentences = io.StringIO(), 0
 
         while not dataset.epoch_finished():
-            sentence_lens, word_ids, charseq_ids, charseqs, charseq_lens = dataset.next_batch(args.batch_size)
+            sentence_lens, word_ids, charseq_ids, charseqs, charseq_lens, morph_mask = dataset.next_batch(args.batch_size)
 
             feeds = {self.is_training: False, self.sentence_lens: sentence_lens,
                      self.charseqs: charseqs[dataset.FORMS], self.charseq_lens: charseq_lens[dataset.FORMS],
-                     self.word_ids: word_ids[dataset.FORMS], self.charseq_ids: charseq_ids[dataset.FORMS]}
+                     self.word_ids: word_ids[dataset.FORMS], self.charseq_ids: charseq_ids[dataset.FORMS],
+                     self.morph_mask: morph_mask,}
             if dataset.variants > 1:
                 feeds[self.variants] = word_ids[dataset.VARIANT]
             if dataset.embeddings_size:
