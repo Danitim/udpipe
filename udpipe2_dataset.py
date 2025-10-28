@@ -348,6 +348,12 @@ class UDPipe2Dataset:
 
             fields = []
             fields.append(str(i + 1))
+            
+            forms_factor = self._factors[self.FORMS]
+            form_offset = i + forms_factor.with_root
+            current_form = forms_factor.strings[index][form_offset]
+            is_ellipsis_token = (not current_form) or (current_form == "_")
+            
             for f in range(self.FACTORS):
                 factor = self._factors[f]
                 offset = i + factor.with_root
@@ -372,6 +378,10 @@ class UDPipe2Dataset:
                                 field = fields[-1]
                             # Do not generate empty lemmas
                             field = field or fields[-1]
+                            
+                if is_ellipsis_token:
+                    if f == self.UPOS or f == self.FEATS:
+                        field = "_"
 
                 fields.append(field)
 
