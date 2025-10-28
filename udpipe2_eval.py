@@ -461,16 +461,19 @@ def evaluate(gold_ud, system_ud):
 
     # Align words
     alignment = align_words(gold_ud.words, system_ud.words)
+    
+    def not_ellipsis(word):
+        return word.columns[FORM] and word.columns[FORM] != "_"
 
     # Compute the F1-scores
     return {
         "Tokens": spans_score(gold_ud.tokens, system_ud.tokens),
         "Sentences": spans_score(gold_ud.sentences, system_ud.sentences),
         "Words": alignment_score(alignment),
-        "UPOS": alignment_score(alignment, lambda w, _: w.columns[UPOS]),
-        "XPOS": alignment_score(alignment, lambda w, _: w.columns[XPOS]),
-        "UFeats": alignment_score(alignment, lambda w, _: w.columns[FEATS]),
-        "AllTags": alignment_score(alignment, lambda w, _: (w.columns[UPOS], w.columns[XPOS], w.columns[FEATS])),
+        "UPOS": alignment_score(alignment, lambda w, _: w.columns[UPOS], filter_fn=not_ellipsis),
+        "XPOS": alignment_score(alignment, lambda w, _: w.columns[XPOS], filter_fn=not_ellipsis),
+        "UFeats": alignment_score(alignment, lambda w, _: w.columns[FEATS], filter_fn=not_ellipsis),
+        "AllTags": alignment_score(alignment, lambda w, _: (w.columns[UPOS], w.columns[XPOS], w.columns[FEATS]), filter_fn=not_ellipsis),
         "Lemmas": alignment_score(alignment, lambda w, ga: w.columns[LEMMA] if ga(w).columns[LEMMA] != "_" else "_"),
         "UAS": alignment_score(alignment, lambda w, ga: ga(w.parent)),
         "LAS": alignment_score(alignment, lambda w, ga: (ga(w.parent), w.columns[DEPREL])),
