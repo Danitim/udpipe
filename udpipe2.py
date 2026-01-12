@@ -521,7 +521,7 @@ class UDPipe2:
         args = UDPipe2.argument_parser().parse_args([args.model], namespace=args)
 
         # Manual args post-processing
-        args.tags = args.tags.split(",")
+        args.tags = [tag for tag in args.tags.split(",") if tag]
         args.epochs = [(int(epochs), float(lr)) for epochs, lr in (epochs_lr.split(":") for epochs_lr in args.epochs.split(","))]
 
 
