@@ -174,7 +174,7 @@ class UDPipe2Dataset:
                             factor.word_ids[-1].append(int(word) if word != "_" else -1)
                         elif f == self.FORMS and not train:
                             factor.word_ids[-1].append(0)
-                            form_dict[word] = form_dict.get(word, 0) + 1
+                            form_dict[raw_word] = form_dict.get(raw_word, 0) + 1
                         elif f == self.LEMMAS and self._lr_allow_copy is None:
                             factor.word_ids[-1].append(0)
                             lemma_dict_with_copy[self._gen_lemma_rule(columns[self.FORMS], word, True)] = 1
@@ -200,7 +200,12 @@ class UDPipe2Dataset:
             forms = self._factors[self.FORMS]
             for i in range(len(forms.word_ids)):
                 for j in range(forms.with_root, len(forms.word_ids[i])):
-                    word = "<unk>" if form_dict[forms.strings[i][j]] < 2 else forms.strings[i][j]
+                    raw_word = forms.strings[i][j]
+                    if mask_ellipsis and (not raw_word or raw_word == "_"):
+                        word = ellipsis_mask_token
+                    else:
+                        count = form_dict.get(raw_word, 0)
+                        word = "<unk>" if count < 2 else raw_word
                     if word not in forms.words_map:
                         forms.words_map[word] = len(forms.words)
                         forms.words.append(word)
