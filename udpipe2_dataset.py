@@ -54,7 +54,8 @@ class UDPipe2Dataset:
                 self.charseq_ids = []
 
     def __init__(self, path=None, text=None, embeddings=[], train=None, shuffle_batches=True,
-                 override_variant=None, max_sentence_len=None, max_sentences=None):
+                 override_variant=None, max_sentence_len=None, max_sentences=None,
+                 mask_ellipsis=False, ellipsis_mask_token="[MASK]"):
         # Create factors and other variables
         self._factors = []
         for f in range(self.FACTORS):
@@ -111,6 +112,8 @@ class UDPipe2Dataset:
                         continue
 
                     columns = line.split("\t")[1:]
+                    raw_form = columns[self.FORMS]
+                    is_ellipsis = (not raw_form) or (raw_form == "_")
 
                     if not in_sentence:
                         for f in range(self.FACTORS):
@@ -144,8 +147,11 @@ class UDPipe2Dataset:
                     for f in range(self.FACTORS):
                         factor = self._factors[f]
 
-                        word = columns[f]
-                        factor.strings[-1].append(word)
+                        raw_word = columns[f]
+                        word = raw_word
+                        if f == self.FORMS and is_ellipsis and mask_ellipsis:
+                            word = ellipsis_mask_token
+                        factor.strings[-1].append(raw_word)
 
                         if f == self.LEMMAS and self._lr_allow_copy is not None:
                             word = self._gen_lemma_rule(columns[self.FORMS], columns[self.LEMMAS], self._lr_allow_copy)
@@ -182,8 +188,7 @@ class UDPipe2Dataset:
                                     factor.words.append(word)
                             factor.word_ids[-1].append(factor.words_map[word])
 
-                    form_val = columns[self.FORMS]
-                    morph_ok = 0 if (not form_val or form_val == "_") else 1
+                    morph_ok = 0 if is_ellipsis else 1
                     self._morph_active[-1].append(morph_ok)
                 else:
                     in_sentence = False

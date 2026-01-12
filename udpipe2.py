@@ -487,6 +487,10 @@ class UDPipe2:
         parser.add_argument("--max_sentence_len", default=120, type=int, help="Max sentence length.")
         parser.add_argument("--morphodita", default=None, type=str, help="MorphoDiTa dictionary used for PDT-C prediction.")
         parser.add_argument("--min_epoch_batches", default=300, type=int, help="Minimum number of batches per epoch.")
+        parser.add_argument("--mask_ellipsis", default=False, action="store_true",
+                            help="Mask ellipsis tokens in FORMS for input features.")
+        parser.add_argument("--ellipsis_mask_token", default="[MASK]", type=str,
+                            help="Token to use when masking ellipsis in FORMS.")
         parser.add_argument("--parse", default=1, type=int, help="Parse.")
         parser.add_argument("--parser_layers", default=1, type=int, help="Parser layers.")
         parser.add_argument("--parser_deprel_dim", default=128, type=int, help="Parser deprel dim.")
@@ -551,22 +555,28 @@ if __name__ == "__main__":
     devs, tests = [], []
     EvaluationDataset = collections.namedtuple("EvaluationDataset", ["label", "data", "gold"])
     if not args.predict:
-        train = udpipe2_dataset.UDPipe2Dataset(path=args.train, max_sentence_len=args.max_sentence_len, shuffle_batches=True,
-                                               embeddings=glob.glob("{}*.npz".format(args.train)))
+        train = udpipe2_dataset.UDPipe2Dataset(
+            path=args.train, max_sentence_len=args.max_sentence_len, shuffle_batches=True,
+            embeddings=glob.glob("{}*.npz".format(args.train)),
+            mask_ellipsis=args.mask_ellipsis, ellipsis_mask_token=args.ellipsis_mask_token)
         train.save_mappings(os.path.join(args.model, "mappings.pickle"))
         for sources, target in [(args.dev, devs), (args.test, tests)]:
             for source in sources:
                 label, path = ("", source) if ":" not in source else source.split(":", maxsplit=1)
                 target.append(EvaluationDataset(
                     label,
-                    udpipe2_dataset.UDPipe2Dataset(path=path, train=train, shuffle_batches=False,
-                                                   embeddings=glob.glob("{}*.npz".format(path))),
+                    udpipe2_dataset.UDPipe2Dataset(
+                        path=path, train=train, shuffle_batches=False,
+                        embeddings=glob.glob("{}*.npz".format(path)),
+                        mask_ellipsis=args.mask_ellipsis, ellipsis_mask_token=args.ellipsis_mask_token),
                     udpipe2_eval.load_conllu_file(path, args.single_root)
                 ))
     else:
         train = udpipe2_dataset.UDPipe2Dataset.load_mappings(os.path.join(args.model, "mappings.pickle"))
-        test = udpipe2_dataset.UDPipe2Dataset(path=args.predict_input, train=train, shuffle_batches=False,
-                                              embeddings=glob.glob("{}*.npz".format(args.predict_input)))
+        test = udpipe2_dataset.UDPipe2Dataset(
+            path=args.predict_input, train=train, shuffle_batches=False,
+            embeddings=glob.glob("{}*.npz".format(args.predict_input)),
+            mask_ellipsis=args.mask_ellipsis, ellipsis_mask_token=args.ellipsis_mask_token)
 
     # Construct the network
     network = UDPipe2(threads=args.threads, seed=args.seed)
