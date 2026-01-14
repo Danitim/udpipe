@@ -79,11 +79,15 @@ class UDPipe2Dataset:
             self._embeddings = []
             for embeddings_path in embeddings:
                 with np.load(embeddings_path, allow_pickle=True) as embeddings_file:
+                    count = 0
                     for i, (_, value) in enumerate(embeddings_file.items()):
+                        count += 1
                         if max_sentence_len: value = value[:max_sentence_len]
                         if i >= len(self._embeddings): self._embeddings.append(value)
                         else: self._embeddings[i] = np.concatenate([self._embeddings[i], value], axis=1)
-                    assert i + 1 == len(self._embeddings)
+                    if count == 0:
+                        raise ValueError("Embeddings file is empty: {}".format(embeddings_path))
+                    assert count == len(self._embeddings)
         self._embeddings_size = self._embeddings[0].shape[1] if self._embeddings else 0
 
         # Load the sentences
