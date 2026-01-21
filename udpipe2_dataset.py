@@ -37,6 +37,15 @@ class UDPipe2Dataset:
     re_extras = re.compile(r"^#|^\d+-|^\d+\.")
     re_variant = re.compile(r"^#\s*variant\s*=\s*(\S+)")
 
+    @staticmethod
+    def _has_ellipsis_flag(misc):
+        if not misc or misc == "_":
+            return False
+        for part in misc.split("|"):
+            if part.strip() == "Ellipsis=Yes":
+                return True
+        return False
+
     class _Factor:
         ROOT = 2
         def __init__(self, with_root, characters, train=None):
@@ -117,7 +126,8 @@ class UDPipe2Dataset:
 
                     columns = line.split("\t")[1:]
                     raw_form = columns[self.FORMS]
-                    is_ellipsis = (not raw_form) or (raw_form == "_")
+                    misc_val = columns[self.MISC] if len(columns) > self.MISC else "_"
+                    is_ellipsis = self._has_ellipsis_flag(misc_val)
 
                     if not in_sentence:
                         for f in range(self.FACTORS):
@@ -202,10 +212,13 @@ class UDPipe2Dataset:
         # Finalize forms if needed
         if not train:
             forms = self._factors[self.FORMS]
+            misc = self._factors[self.MISC]
             for i in range(len(forms.word_ids)):
                 for j in range(forms.with_root, len(forms.word_ids[i])):
                     raw_word = forms.strings[i][j]
-                    if mask_ellipsis and (not raw_word or raw_word == "_"):
+                    misc_index = j - forms.with_root + misc.with_root
+                    misc_val = misc.strings[i][misc_index] if misc_index < len(misc.strings[i]) else "_"
+                    if mask_ellipsis and self._has_ellipsis_flag(misc_val):
                         word = ellipsis_mask_token
                     else:
                         count = form_dict.get(raw_word, 0)
@@ -365,8 +378,10 @@ class UDPipe2Dataset:
             
             forms_factor = self._factors[self.FORMS]
             form_offset = i + forms_factor.with_root
-            current_form = forms_factor.strings[index][form_offset]
-            is_ellipsis_token = (not current_form) or (current_form == "_")
+            misc_factor = self._factors[self.MISC]
+            misc_offset = i + misc_factor.with_root
+            misc_value = misc_factor.strings[index][misc_offset] if misc_offset < len(misc_factor.strings[index]) else "_"
+            is_ellipsis_token = self._has_ellipsis_flag(misc_value)
             
             for f in range(self.FACTORS):
                 factor = self._factors[f]
