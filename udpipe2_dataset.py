@@ -127,7 +127,7 @@ class UDPipe2Dataset:
                     columns = line.split("\t")[1:]
                     raw_form = columns[self.FORMS]
                     misc_val = columns[self.MISC] if len(columns) > self.MISC else "_"
-                    is_ellipsis = self._has_ellipsis_flag(misc_val)
+                    is_ellipsis = self._has_ellipsis_flag(misc_val) and ((not raw_form) or (raw_form == "_"))
 
                     if not in_sentence:
                         for f in range(self.FACTORS):
@@ -218,7 +218,7 @@ class UDPipe2Dataset:
                     raw_word = forms.strings[i][j]
                     misc_index = j - forms.with_root + misc.with_root
                     misc_val = misc.strings[i][misc_index] if misc_index < len(misc.strings[i]) else "_"
-                    if mask_ellipsis and self._has_ellipsis_flag(misc_val):
+                    if mask_ellipsis and self._has_ellipsis_flag(misc_val) and ((not raw_word) or (raw_word == "_")):
                         word = ellipsis_mask_token
                     else:
                         count = form_dict.get(raw_word, 0)
@@ -381,7 +381,8 @@ class UDPipe2Dataset:
             misc_factor = self._factors[self.MISC]
             misc_offset = i + misc_factor.with_root
             misc_value = misc_factor.strings[index][misc_offset] if misc_offset < len(misc_factor.strings[index]) else "_"
-            is_ellipsis_token = self._has_ellipsis_flag(misc_value)
+            current_form = forms_factor.strings[index][form_offset]
+            is_ellipsis_token = self._has_ellipsis_flag(misc_value) and ((not current_form) or (current_form == "_"))
             
             for f in range(self.FACTORS):
                 factor = self._factors[f]
