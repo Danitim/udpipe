@@ -127,7 +127,7 @@ class UDPipe2Dataset:
                     columns = line.split("\t")[1:]
                     raw_form = columns[self.FORMS]
                     misc_val = columns[self.MISC] if len(columns) > self.MISC else "_"
-                    is_ellipsis = self._has_ellipsis_flag(misc_val) and ((not raw_form) or (raw_form == "_"))
+                    is_ellipsis = self._has_ellipsis_flag(misc_val)
 
                     if not in_sentence:
                         for f in range(self.FACTORS):
@@ -163,7 +163,7 @@ class UDPipe2Dataset:
 
                         raw_word = columns[f]
                         word = raw_word
-                        if f == self.FORMS and is_ellipsis and mask_ellipsis:
+                        if f == self.FORMS and is_ellipsis and mask_ellipsis and ((not raw_word) or (raw_word == "_")):
                             word = ellipsis_mask_token
                         factor.strings[-1].append(raw_word)
 
@@ -381,8 +381,7 @@ class UDPipe2Dataset:
             misc_factor = self._factors[self.MISC]
             misc_offset = i + misc_factor.with_root
             misc_value = misc_factor.strings[index][misc_offset] if misc_offset < len(misc_factor.strings[index]) else "_"
-            current_form = forms_factor.strings[index][form_offset]
-            is_ellipsis_token = self._has_ellipsis_flag(misc_value) and ((not current_form) or (current_form == "_"))
+            is_ellipsis_token = self._has_ellipsis_flag(misc_value)
             
             for f in range(self.FACTORS):
                 factor = self._factors[f]
@@ -410,7 +409,7 @@ class UDPipe2Dataset:
                             field = field or fields[-1]
                             
                 if is_ellipsis_token:
-                    if f == self.UPOS or f == self.FEATS:
+                    if f in (self.UPOS, self.XPOS, self.FEATS, self.LEMMAS):
                         field = "_"
 
                 fields.append(field)
